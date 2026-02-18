@@ -1,5 +1,5 @@
 {
-  "name": "Amar Health AI",
+  "name": "Amar Health",
   "description": "A comprehensive evidence-based health, nutrition, and lifestyle coach designed for personalized wellness tracking and AI-driven insights.",
   "requestFramePermissions": [
     "microphone"
