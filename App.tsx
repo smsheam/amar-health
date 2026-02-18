@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { HealthGoal, UserStats, DailyLog, AppState, FoodEntry } from './types';
-import Dashboard from './components/Dashboard';
-import Logs from './components/Logs';
-import Coach from './components/Coach';
-import Profile from './components/Profile';
-import Diagnosis from './components/Diagnosis';
-import DoctorNewsBar from './components/DoctorNewsBar';
-import { supabase, GUEST_ID } from './supabaseClient';
+import { HealthGoal, UserStats, DailyLog, AppState, FoodEntry } from './types.ts';
+import Dashboard from './components/Dashboard.tsx';
+import Logs from './components/Logs.tsx';
+import Coach from './components/Coach.tsx';
+import Profile from './components/Profile.tsx';
+import Diagnosis from './components/Diagnosis.tsx';
+import DoctorNewsBar from './components/DoctorNewsBar.tsx';
+import { supabase, GUEST_ID } from './supabaseClient.ts';
 import { LayoutDashboard, ClipboardList, MessageSquare, UserCircle, Activity, ShieldCheck, Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
