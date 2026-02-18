@@ -1,8 +1,8 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { SYSTEM_INSTRUCTION, FOOD_DIAGNOSIS_INSTRUCTION } from "./constants.tsx";
-import { AppState } from "./types.ts";
-import { calculateBMI, calculateBMR, heightToCm } from "./utils/calculations.ts";
+import { SYSTEM_INSTRUCTION, FOOD_DIAGNOSIS_INSTRUCTION } from "./constants";
+import { AppState } from "./types";
+import { calculateBMI, calculateBMR, heightToCm } from "./utils/calculations";
 
 export const getChatResponse = async (userMessage: string, state: AppState) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
