@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { SYSTEM_INSTRUCTION, FOOD_DIAGNOSIS_INSTRUCTION } from "./constants";
 import { AppState } from "./types";
-import { calculateBMI, calculateBMR, heightToCm } from "./utils/calculations";
+import { calculateBMI, calculateBMR } from "./utils/calculations";
 
 export const getChatResponse = async (userMessage: string, state: AppState) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -12,14 +12,18 @@ export const getChatResponse = async (userMessage: string, state: AppState) => {
   };
 
   const bmi = calculateBMI(state.user.weight, state.user.heightFeet, state.user.heightInches);
-  const bmr = calculateBMR(state.user); 
-  const heightCm = heightToCm(state.user.heightFeet, state.user.heightInches);
+  const bmr = calculateBMR(state.user);
 
   const contextPrompt = `
-    USER: ${state.user.name}, ${state.user.age}y, ${state.user.weight}kg, Goal: ${state.user.goal}
-    STATS: BMI ${bmi}, BMR ${bmr}
-    LOGS: ${todayLog.food.length} items eaten today.
-    QUERY: ${userMessage}
+    USER DATA:
+    Name: ${state.user.name}, Age: ${state.user.age}, Weight: ${state.user.weight}kg, Goal: ${state.user.goal}
+    BMI: ${bmi}, BMR: ${bmr}
+    TODAY'S LOGS:
+    Food: ${JSON.stringify(todayLog.food)}
+    Exercise: ${JSON.stringify(todayLog.exercise)}
+    Hydration: ${todayLog.hydration}ml
+    
+    USER QUERY: ${userMessage}
   `;
 
   try {
@@ -30,8 +34,8 @@ export const getChatResponse = async (userMessage: string, state: AppState) => {
     });
     return response.text;
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "Error connecting to AI Coach.";
+    console.error("Gemini Error:", error);
+    return "I'm having trouble connecting to my knowledge base. Please try again.";
   }
 };
 
@@ -40,9 +44,10 @@ export const getFoodDiagnosis = async (foodName: string, state: AppState) => {
   const bmr = calculateBMR(state.user);
   
   const prompt = `
-    Diagnose this food: "${foodName}"
-    User Profile: ${state.user.goal} goal, ${state.user.weight}kg.
-    BMR: ${bmr} kcal.
+    Diagnose: "${foodName}"
+    User Goal: ${state.user.goal}
+    User Weight: ${state.user.weight}kg
+    User BMR: ${bmr}
   `;
 
   try {
@@ -55,8 +60,7 @@ export const getFoodDiagnosis = async (foodName: string, state: AppState) => {
       },
     });
 
-    const result = JSON.parse(response.text || "{}");
-    return result;
+    return JSON.parse(response.text || "{}");
   } catch (error) {
     console.error("Diagnosis Error:", error);
     return null;

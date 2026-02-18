@@ -8,7 +8,7 @@ export enum HealthGoal {
 export interface UserStats {
   name: string;
   age: number;
-  weight: number; // kg
+  weight: number; 
   heightFeet: number;
   heightInches: number;
   gender: 'male' | 'female';
@@ -26,7 +26,6 @@ export interface FoodEntry {
   calcium: number;
   iron: number;
   timestamp: number;
-  portionLabel?: string;
 }
 
 export interface ExerciseEntry {
@@ -41,7 +40,7 @@ export interface DailyLog {
   date: string;
   food: FoodEntry[];
   exercise: ExerciseEntry[];
-  hydration: number; // ml
+  hydration: number; 
   sleepHours: number;
   sedentaryHours: number;
 }

@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { HealthGoal, UserStats, DailyLog, AppState, FoodEntry } from './types';
 import Dashboard from './components/Dashboard';
 import Logs from './components/Logs';
@@ -8,11 +7,12 @@ import Profile from './components/Profile';
 import Diagnosis from './components/Diagnosis';
 import DoctorNewsBar from './components/DoctorNewsBar';
 import { supabase, GUEST_ID } from './supabaseClient';
-import { LayoutDashboard, ClipboardList, MessageSquare, UserCircle, Activity, ShieldCheck, Loader2 } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, MessageSquare, UserCircle, Activity, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'logs' | 'diagnosis' | 'coach' | 'profile'>('dashboard');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<AppState>({
     user: {
       name: 'Guest User',
@@ -26,194 +26,153 @@ const App: React.FC = () => {
     logs: []
   });
 
-  // Load Initial Data from Supabase or Fallback to LocalStorage
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        // Fallback logic if Supabase is not configured
-        if (!supabase) {
-          console.warn('Supabase not configured. Falling back to local storage.');
-          const saved = localStorage.getItem('amar_health_state');
-          if (saved) {
-            setState(JSON.parse(saved));
-          }
-          setLoading(false);
-          return;
-        }
-
-        // 1. Fetch Profile
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', GUEST_ID)
-          .single();
-
-        if (profileError && profileError.code !== 'PGRST116') {
-          console.error('Error fetching profile:', profileError);
-        }
-
-        // 2. Fetch Logs
-        const { data: logData, error: logError } = await supabase
-          .from('daily_logs')
-          .select('*')
-          .eq('profile_id', GUEST_ID);
-
-        if (logError) {
-          console.error('Error fetching logs:', logError);
-        }
-
-        setState({
-          user: profileData ? {
-            name: profileData.name,
-            age: profileData.age,
-            weight: profileData.weight,
-            heightFeet: profileData.height_feet,
-            heightInches: profileData.height_inches,
-            gender: profileData.gender,
-            goal: profileData.goal as HealthGoal
-          } : state.user,
-          logs: logData ? logData.map(l => ({
-            date: l.date,
-            food: l.food || [],
-            exercise: l.exercise || [],
-            hydration: l.hydration || 0,
-            sleepHours: l.sleep_hours || 0,
-            sedentaryHours: l.sedentary_hours || 0
-          })) : []
-        });
-      } catch (err) {
-        console.error('Data Sync Failed:', err);
-      } finally {
-        setLoading(false);
+      if (!supabase) {
+        throw new Error('Supabase client not configured');
       }
-    };
 
-    fetchData();
+      // Fetch Profile
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', GUEST_ID)
+        .single();
+
+      if (profileError && profileError.code !== 'PGRST116') throw profileError;
+
+      // Fetch Logs
+      const { data: logData, error: logError } = await supabase
+        .from('daily_logs')
+        .select('*')
+        .eq('profile_id', GUEST_ID);
+
+      if (logError) throw logError;
+
+      setState({
+        user: profileData ? {
+          name: profileData.name,
+          age: profileData.age,
+          weight: profileData.weight,
+          heightFeet: profileData.height_feet,
+          heightInches: profileData.height_inches,
+          gender: profileData.gender,
+          goal: profileData.goal as HealthGoal
+        } : state.user,
+        logs: logData ? logData.map(l => ({
+          date: l.date,
+          food: l.food || [],
+          exercise: l.exercise || [],
+          hydration: l.hydration || 0,
+          sleepHours: l.sleep_hours || 0,
+          sedentaryHours: l.sedentary_hours || 0
+        })) : []
+      });
+    } catch (err: any) {
+      console.error('Data Sync Failed:', err);
+      setError(supabase ? 'Could not sync with database.' : 'Cloud sync disabled. Using local storage.');
+      const saved = localStorage.getItem('amar_health_state');
+      if (saved) setState(JSON.parse(saved));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Persist to LocalStorage as a secondary backup and for non-Supabase environments
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Sync to localStorage as a fallback
   useEffect(() => {
     localStorage.setItem('amar_health_state', JSON.stringify(state));
   }, [state]);
 
   const updateUser = async (newStats: UserStats) => {
     setState(prev => ({ ...prev, user: newStats }));
-    
-    if (supabase) {
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: GUEST_ID,
-          name: newStats.name,
-          age: newStats.age,
-          weight: newStats.weight,
-          height_feet: newStats.heightFeet,
-          height_inches: newStats.heightInches,
-          gender: newStats.gender,
-          goal: newStats.goal,
-          updated_at: new Date()
-        });
-      if (error) console.error('Error updating profile in Supabase:', error);
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.from('profiles').upsert({
+        id: GUEST_ID,
+        name: newStats.name,
+        age: newStats.age,
+        weight: newStats.weight,
+        height_feet: newStats.heightFeet,
+        height_inches: newStats.heightInches,
+        gender: newStats.gender,
+        goal: newStats.goal,
+        updated_at: new Date().toISOString()
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error('Profile update failed:', err);
+      setError('Failed to save profile. Changes saved locally.');
     }
   };
 
   const updateLogs = async (newLogs: DailyLog[]) => {
     setState(prev => ({ ...prev, logs: newLogs }));
-
-    if (supabase) {
+    if (!supabase) return;
+    try {
       for (const log of newLogs) {
-        const { error } = await supabase
-          .from('daily_logs')
-          .upsert({
-            profile_id: GUEST_ID,
-            date: log.date,
-            food: log.food,
-            exercise: log.exercise,
-            hydration: log.hydration,
-            sleep_hours: log.sleepHours,
-            sedentary_hours: log.sedentaryHours
-          }, { onConflict: 'profile_id, date' });
-        
-        if (error) console.error('Error syncing log to Supabase:', error);
+        const { error } = await supabase.from('daily_logs').upsert({
+          profile_id: GUEST_ID,
+          date: log.date,
+          food: log.food,
+          exercise: log.exercise,
+          hydration: log.hydration,
+          sleep_hours: log.sleepHours,
+          sedentary_hours: log.sedentaryHours
+        }, { onConflict: 'profile_id, date' });
+        if (error) throw error;
       }
+    } catch (err) {
+      console.error('Log update failed:', err);
+      setError('Failed to sync logs. Changes saved locally.');
     }
   };
 
-  const addFoodToToday = async (food: Omit<FoodEntry, 'id' | 'timestamp'>) => {
+  const addFoodToToday = (food: Omit<FoodEntry, 'id' | 'timestamp'>) => {
     const today = new Date().toISOString().split('T')[0];
     const logIndex = state.logs.findIndex(l => l.date === today);
-    let updatedLog: DailyLog;
-    
     const entry: FoodEntry = { ...food, id: Math.random().toString(36).substr(2, 9), timestamp: Date.now() };
 
+    let updatedLogs = [...state.logs];
     if (logIndex >= 0) {
-      updatedLog = { ...state.logs[logIndex], food: [...state.logs[logIndex].food, entry] };
+      updatedLogs[logIndex] = { ...updatedLogs[logIndex], food: [...updatedLogs[logIndex].food, entry] };
     } else {
-      updatedLog = { date: today, food: [entry], exercise: [], hydration: 0, sleepHours: 0, sedentaryHours: 0 };
+      updatedLogs.push({ date: today, food: [entry], exercise: [], hydration: 0, sleepHours: 0, sedentaryHours: 0 });
     }
-
-    const newLogs = [...state.logs];
-    if (logIndex >= 0) newLogs[logIndex] = updatedLog;
-    else newLogs.push(updatedLog);
-    setState(prev => ({ ...prev, logs: newLogs }));
-
-    if (supabase) {
-      const { error } = await supabase
-        .from('daily_logs')
-        .upsert({
-          profile_id: GUEST_ID,
-          date: updatedLog.date,
-          food: updatedLog.food,
-          exercise: updatedLog.exercise,
-          hydration: updatedLog.hydration,
-          sleep_hours: updatedLog.sleepHours,
-          sedentary_hours: updatedLog.sedentaryHours
-        }, { onConflict: 'profile_id, date' });
-
-      if (error) console.error('Error syncing new food to Supabase:', error);
-    }
+    updateLogs(updatedLogs);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="animate-spin text-emerald-500" size={48} />
-        <p className="text-slate-500 font-medium animate-pulse">Syncing Health Data...</p>
-      </div>
-    );
-  }
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard state={state} />;
-      case 'logs':
-        return <Logs state={state} updateLogs={updateLogs} />;
-      case 'diagnosis':
-        return <Diagnosis state={state} onAddFood={addFoodToToday} />;
-      case 'coach':
-        return <Coach state={state} />;
-      case 'profile':
-        return <Profile stats={state.user} updateStats={updateUser} />;
-      default:
-        return <Dashboard state={state} />;
-    }
-  };
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-4">
+      <Loader2 className="animate-spin text-emerald-500" size={48} />
+      <p className="text-slate-500 font-medium">Synchronizing Health Data...</p>
+    </div>
+  );
 
   return (
     <div className="min-h-screen pb-20 md:pb-0 md:pl-64 flex flex-col bg-slate-50">
       <DoctorNewsBar />
       
-      <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 bg-slate-900 text-white flex-col p-6 z-50">
+      {error && (
+        <div className="bg-amber-50 border-b border-amber-100 p-2 flex items-center justify-center gap-2 text-xs font-medium text-amber-700">
+          <AlertCircle size={14} /> {error}
+          {supabase && <button onClick={() => fetchData()} className="underline ml-2">Retry Sync</button>}
+        </div>
+      )}
+
+      <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 bg-slate-900 text-white flex-col p-6 z-50 shadow-2xl">
         <div className="flex items-center gap-3 mb-10">
-          <div className="bg-emerald-500 p-2 rounded-xl">
+          <div className="p-2 bg-emerald-500 rounded-xl">
             <Activity className="text-white" size={24} />
           </div>
           <h1 className="text-xl font-bold tracking-tight">Amar Health</h1>
         </div>
-
         <nav className="flex-1 space-y-2">
           <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={20} />} label="Dashboard" />
           <NavItem active={activeTab === 'diagnosis'} onClick={() => setActiveTab('diagnosis')} icon={<ShieldCheck size={20} />} label="Food Diagnosis" />
@@ -221,37 +180,25 @@ const App: React.FC = () => {
           <NavItem active={activeTab === 'coach'} onClick={() => setActiveTab('coach')} icon={<MessageSquare size={20} />} label="AI Coach" />
           <NavItem active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<UserCircle size={20} />} label="Profile" />
         </nav>
-
-        <div className="mt-auto pt-6 border-t border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center font-bold text-emerald-400">
-              {state.user.name.charAt(0)}
-            </div>
-            <div>
-              <p className="text-sm font-medium">{state.user.name}</p>
-              <p className="text-xs text-slate-400 capitalize">{state.user.goal.toLowerCase()}</p>
-            </div>
+        
+        <div className="mt-auto p-4 bg-slate-800/50 rounded-2xl border border-slate-700/50">
+          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Status</p>
+          <div className="flex items-center gap-2">
+             <div className={`w-2 h-2 rounded-full ${supabase ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></div>
+             <span className="text-xs font-bold text-slate-300">{supabase ? 'Cloud Sync Active' : 'Offline Mode'}</span>
           </div>
         </div>
       </aside>
 
-      <header className="md:hidden flex items-center justify-between p-4 bg-white border-b sticky top-0 z-40">
-        <div className="flex items-center gap-2">
-           <Activity className="text-emerald-500" size={24} />
-           <span className="font-bold text-slate-900">Amar Health</span>
-        </div>
-        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs">
-          {state.user.name.charAt(0)}
-        </div>
-      </header>
-
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto p-4 md:p-8">
-          {renderContent()}
-        </div>
+      <main className="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full">
+        {activeTab === 'dashboard' && <Dashboard state={state} />}
+        {activeTab === 'logs' && <Logs state={state} updateLogs={updateLogs} />}
+        {activeTab === 'diagnosis' && <Diagnosis state={state} onAddFood={addFoodToToday} />}
+        {activeTab === 'coach' && <Coach state={state} />}
+        {activeTab === 'profile' && <Profile stats={state.user} updateStats={updateUser} />}
       </main>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-3 z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t flex justify-around p-4 z-50">
         <MobileNavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={24} />} />
         <MobileNavItem active={activeTab === 'diagnosis'} onClick={() => setActiveTab('diagnosis')} icon={<ShieldCheck size={24} />} />
         <MobileNavItem active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon={<ClipboardList size={24} />} />
@@ -262,15 +209,14 @@ const App: React.FC = () => {
   );
 };
 
-const NavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; label: string }> = ({ active, onClick, icon, label }) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${active ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
-    {icon}
-    <span className="font-medium">{label}</span>
+const NavItem = ({ active, onClick, icon, label }: any) => (
+  <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${active ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+    {icon} <span className="font-medium">{label}</span>
   </button>
 );
 
-const MobileNavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode }> = ({ active, onClick, icon }) => (
-  <button onClick={onClick} className={`p-2 rounded-xl transition-all ${active ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400'}`}>
+const MobileNavItem = ({ active, onClick, icon }: any) => (
+  <button onClick={onClick} className={`p-2 rounded-2xl transition-all duration-300 ${active ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400'}`}>
     {icon}
   </button>
 );

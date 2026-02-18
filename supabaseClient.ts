@@ -1,13 +1,17 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || 'https://cvcurkdtvpngsrybqzhn.supabase.co';
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
 
-// Only initialize if keys are present to prevent "supabaseUrl is required" error
+// Create the client only if both URL and Key are available to prevent "supabaseUrl is required" error.
 export const supabase = (supabaseUrl && supabaseAnonKey) 
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
 
-// Shared Guest ID for demo/simple persistence
+if (!supabase) {
+  console.warn('Supabase client not initialized. Ensure SUPABASE_URL and SUPABASE_ANON_KEY are set in environment variables.');
+}
+
+// Shared GUEST_ID for simplified persistence in this context. 
+// In a full production app, this would be the authenticated user's ID.
 export const GUEST_ID = '00000000-0000-0000-0000-000000000000';
