@@ -1,0 +1,5 @@
+{
+  "name": "Amar Health",
+  "description": "AI-Powered Biological Audit & Wellness Companion. Track nutrition, calculate BMI/BMR, and get personalized health coaching from Gemini.",
+  "requestFramePermissions": []
+}
